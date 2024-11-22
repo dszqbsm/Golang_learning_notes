@@ -11,14 +11,18 @@ type stringStruct struct {
 }
 
 func main() {
-breakLabel:
+	// 使用goto跳出双层for循环
 	for i := 0; i < 10; i++ {
 		for j := 0; j < 10; j++ {
-			if j == 2 {
-				fmt.Println(j)
-				continue breakLabel //跳出内层循环，继续执行外层循环，即只会打印十个2
+			if j == 12 {
+				// 跳转到退出标签
+				goto breakTag
 			}
+			fmt.Println(i, j)
 		}
-		fmt.Println(i)
 	}
+	return
+
+breakTag:
+	fmt.Println("breakTag")
 }
