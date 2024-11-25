@@ -6,7 +6,8 @@ func main() {
 	var s []int
 	s = make([]int, 1) // make函数的返回值就是一个切片，分配一个内存
 	s[0] = 100
-	s = append(s, 200) // 不会报错，切片会自动扩容
+	s = append(s, 200)
+	//s[1] = 200			// 报错，因为只分配了一个内存，不会自动扩容
 	fmt.Println(s[0], s[1])
 
 	var m map[string]int
