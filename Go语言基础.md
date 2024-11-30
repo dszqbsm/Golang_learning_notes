@@ -1,6 +1,6 @@
 # Go基础语法
 
-记录Go的基础语法，配合使用例子，加深对Go语言基础语法的熟悉，并作为自己的Go基础语法查询手册
+本文记录了笔者学习李文周老师《GO语言之路》的学习笔记，记录Go的基础语法，配合使用例子，加深对Go语言基础语法的熟悉，并作为自己的Go基础语法查询手册
 
 ## 变量与常量
 
@@ -1233,9 +1233,339 @@ func main() {
 }
 ```
 
-## 结构体与方法
+## 结构体
 
+1. 类型定义与类型声明
 
+- 类型声明/定义
+
+可以使用type关键字基于已存在的类型，定义新的类型，新类型与源类型的底层类型相同，支持显示转换
+
+```go
+func mian() {
+	type MyInt int 			// 基于int类型声明一个MyInt类型
+	var a int = 255
+	var b MyInt
+	// b = a 				// 不能将int类型的a直接赋值给MyInt类型的b
+	b = MyInt(a)			// 支持显示类型转换
+}
+```
+
+- 类型别名
+
+类型别名比类型声明多一个等于号，rune类型和byte类型就属于类型别名，其中rune是int32的别名，完全等同于int32，byte是uint8的别名，完全等同于uint8；
+
+类型别名和源类型本质上属于同一个类型，变量之间支持直接赋值，无需进行类型转换，类型别名只会存在于源代码中，在编译时会被自动替换成原来的类型
+
+```go
+func mian() {
+	type MyInt = int
+	var a = 255
+	var b MyInt = 255
+	b = a 		// int类型的a可以直接赋值给MyInt类型的b
+}
+```
+
+- 二者区别
+
+相当于类型声明是一个新的类型，而类型别名只是一个别名，本质上还是源类型
+
+2. 结构体
+
+当一个结构体类型中的所有字段都可以进行比较时，这个结构体类型就是支持比较的
+
+若两个结构体中的字段相同但顺序不同，也属于不同的类型
+
+以大写字母开头的字段名表示该字段是公开的，否则是私有的
+
+字段的类型可以是结构体或结构体指针，一个结构体不能包含自己，但能包含自己的指针类型，一般用来定义一些递归的数据结构，如链表或树
+
+```go
+func main() {
+	type Info struct {
+		Email string
+		Phone string
+	}
+	// tree 树结点
+	type tree struct {
+		value int
+		left, right *tree	// 同一类型的可以放一行，只能包含自己的指针类型
+		Contact Info		// 可以包含其他结构体
+	}
+}
+```
+
+声明结构体字段时，可以为其指定一个标签，该标签会在程序运行的时候通过反射机制被读取，标签内容由一个或多个键值对组成，用反引号括起来
+
+字段标签在库中应用较多，比如数据库ORM、校验库validator、encoding/json库用来将JSON数据与GO对象相互转换，encoding/json在运行时会利用反射冲相关结构体变量的所有字段中根据json键去查找对应的值，然后使用这个值继续后续操作
+
+```go
+type Student1 struct {
+	ID   int
+	Name string
+}
+
+type Student2 struct {
+	ID   int    `json:"stu_id"`
+	Name string `json:"stu_name"`
+}
+
+func mian() {
+	s1 := Student1{
+		ID:   1,
+		Name: "zhangsan",
+	}
+
+	s2 := Student2{
+		ID:   2,
+		Name: "zhangssi",
+	}
+	// 没有设置标签的，在序列化时默认使用结构体字段名称
+	b1, err := json.Marshal(s1)
+	fmt.Println(b1) // json:{"ID":1, "Name":"zhangsan"}
+	// 设置标签的，在序列化时使用标签指定的字段名称
+	b2, err := json.Marshal(s2)
+	fmt.Println(b2) // json:{"ID":2, "stu_name":"zhangssi"}
+}
+```
+
+3. 结构体变量和字面量
+
+`var s Student`这样声明的结构体变量是零值，即每个字段均为对应类型的零值
+
+结构体支持直接使用结构体字面量创建变量，此外还能按结构体字段顺序指定初始值
+
+```go
+s := {
+	ID: 1,
+	Name: "zhangsan",
+	Gender: "男",
+	Age: 18,
+}
+
+s := {
+	ID: 1,
+	Name: "zhangsan",
+	Gender: "男",
+	Age: 18}		// 这样则可以省略最后一个逗号
+
+s := Student{1, "zhangsan", "男", 18}
+```
+
+4. 匿名结构体
+
+在需要临时定义某些数据结构的场景中，可以使用匿名结构体，跟匿名函数一个道理，不需要调用，可以直接在运行过程中运行
+
+```go
+func main() {
+	tmp := struct {
+		ID int
+		Info string
+	}{
+		ID: 1,
+		Info: "zhangsan",
+	}
+	fmt.Println("tmp: ", tmp)
+}
+```
+
+5. 结构体内存布局
+
+一个结构体变量占用一块连续的内存，具体大小由结构体的字段决定，不是简单的将字段变量大小累加，因为CPU访问内存时，并不是逐个字节访问，而是以字长为单位访问（32位系统字长4字节，64位字长8字节），此外为了平台间的一致性和CPU内存访问的效率，编译器会对内存进行对齐操作，会进行操作系统对其和具体类型对齐；
+
+> 对齐可以减少CPU访问内存的次数，加大CPU访问内存的吞吐量
+
+对于操作系统来说，x86平台的对齐要求是4字节，x86_64平台的对齐要求是8字节
+
+对齐可以参考[Go struct 内存对齐](https://geektutu.com/post/hpg-struct-alignment.html)讲的很详细，根据对齐倍数调整结构体的内存布局，会在结构体的相邻字段之间填充一些字节
+
+> 结构体中字段的顺序会对对齐产生影响，因此要调整结构体内部字段变量的顺序，合理利用字段间的“填充”空间， 使得结构体的字段更加“紧凑”，从而缩小结构体的体积
+
+当一个结构体的最后一个字段是空结构体（内存占用为0）时，编译器会自动在最后额外填充一些该结构体内存对齐要求的字节，可以放置对结构体的最后一个零内存占用字段进行取地址操作时发生越界，从而指向不相关的变量导致内存泄露，当空结构体出现在结构体的其他位置时，就不存在内存越界的风险，所以编译器不会对其进行额外的填充
+
+6. 结构体指针
+
+当结构体字段较多时，结构体体积变大，函数传参时会发生值拷贝，会导致开销较大，此外若需要在函数中修改结构体，此时就需要使用结构体指针，此外go支持直接对结构体指针使用`.`获取其字段，相当于go的语法糖
+
+```go
+func main() {
+	// 直接使用&符号得到结构体指针
+	s1 := &Student{
+		ID:   1,
+		Name: "zhangsan",
+		Age:  18,
+	}
+	// 使用new函数直接创建结构体指针变量并使用
+	var s1 = new(Student)
+	s1.ID = 1				// 在底层相当于(*s1).ID
+	s1.Name = "zhangsan"
+	s1.Age = 18
+}
+```
+
+7. 构造函数与结构体嵌套
+
+构造函数相当于定义了一个函数，传入结构体字段的初始化值，由函数来实现对结构体的初始化，返回一个结构体指针（放置调用函数时的值拷贝性能开销过大）
+
+```go
+func NewStudent(id int, name string, age int) *Student {
+	return &Student{
+		ID:   id,
+		Name: name,
+		Age:  age,
+	}
+}
+```
+
+一个结构体中的字段可以是另外一个结构体类型，Go中也允许结构体中定义没有名只有类型的字段，这样的字段称为匿名字段，匿名字段只是把类型名当作字段名，但是在访问字段时却带来了方便，但是当结构体中的字段名与被嵌套的结构体中的字段名重复时，访问时被嵌套的结构体名称不可省略，不然就分不清访问的是哪个结构体的字段了
+
+```go
+func main() {
+	t1 :=Teacher1 {
+		Name: "zhangsan",
+		Gender: "male",
+		Info: Info {
+			Email: "zhangsan@qq.com",
+			Phone: "123456",
+		},								// 逗号不能漏
+	}
+
+	var t2 Teacher2
+	t2.Name = "lisi"
+	t2.Gender = "female"
+	t2.Email = "lisi@qq.com"			// 相当于t2.Info.Email，匿名字段带来访问字段的方便
+	t2.Phone = "654321"
+}
+```
+
+## 方法和接收者
+
+Go语言允许为特定类型的变量设置专用的函数，即方法，不适用传统类的概念，而是使用方法接收者概念来绑定方法和对象，接收者的概念类似于其他语言中的this或self
+
+1. 方法声明
+
+方法声明与函数声明类似，但是需要在方法名前指定一个接收者参数
+
+```go
+func (接收者 接收者类型) 方法名(参数列表) (返回值列表) {
+	方法体
+}
+```
+
+接收者的变量名官方建议使用接收者类型的首字母小写，如Student类型的接收者变量应该命名为s
+
+接收者类型必须是定义的类型（类型定义、结构体）或其他指针类型，最常用的是为结构体定义方法，对于数组、切片、映射这些类型，可以使用类型定义的方式声明一个新的类型，再为其声明方法；对于函数也可以基于函数定义新的类型，再为其添加方法；Go不支持为其他包的类型声明方法，也不支持为接口类型和基于指针定义的类型定义方法
+
+```go
+type Employee struct {
+	name string
+	salary int 
+}
+
+func (e Employee) SayHi() {			// 使用接收者类型首字母小写作为接收者变量名
+	fmt.Println("Hi, my name is", e.name, "and my salary is", e.salary)
+}
+
+// 对于基本类型，数组、切片、映射、函数，通过类型定义的方式可以为其添加方法
+type MyInt int 
+func (m MyInt) SayHi() {
+	fmt.Println("Hi, my name is", m)
+}
+
+type StringSet map[string]bool
+func (ss StringSet) Has(key string) bool {			// Has判断集合中是否包含指定key的方法
+	return ss[key]
+}
+
+type FilterFunc func(int)
+func (ff FilterFunc) Do(n int) {					// Do执行函数的方法
+	ff(n)
+}
+```
+
+2. 方法调用
+
+与访问结构体变量的字段类似，使用`.`进行调用
+
+3. 值接收者与指针接收者
+
+与函数传值传指针类似，涉及到在方法中修改结构体字段的值，或传递接收者值拷贝开销过大的时候，使用指针接收者会更好，此外还需要保证一致，如果一个类型的某个方法使用了指针类型接收者，那么该类型的其他方法也应该使用指针类型接收者
+
+```go
+type Employee struct {
+	name string
+	salary int 
+}
+
+func (e Employee) raise1(n int) {
+	e.salary += n
+}
+
+func (e *Employee) raise2(n int) {
+	e.salary += n
+}
+
+func main() {
+	// Go语法糖
+	// 对于声明时使用值接收者的方法，使用指针也可以直接调用
+	e1 := &Employee{"zhangsan", 1000}
+	e1.raise1(100)						// 编译器会自行根据指针e1获取实际值，即等价于(*e1).raise1(100)
+
+	// 对于声明时使用指针接收者的方法，使用值也可以直接调用
+	e2 := Employee{"lisi", 2000}
+	e2.raise2(100)						// 编译器会自行根据值e2获取实际值，即等价于(&e2).raise2(100)
+}
+```
+
+Go语言中类型的方法集定义了一组关联到具体类型的值或指针的方法
+
+定义方法时使用的接收者的类型决定了这个方法是关联到值还是关联到指针
+
+4. 组合
+
+Go中通过结构体嵌套的方式进行组合，从而实现类似其他语言中面向对象的继承
+
+在Teacher结构体中以匿名字段方式嵌入Info结构体，从此Teacher结构体就拥有了Info结构体的所有字段和方法，并支持直接访问
+
+Go中进行方法调用时，会先查找当前结构体中是否声明了该方法，没有则依次从当前结构体的嵌入字段的方法中查找，若由重名，则要通过被嵌入字段调用该重名方法，不能省略
+
+```go
+type Info struct {
+	Email string
+	Phone string
+}
+
+func (i Info) Detail() string {
+	return fmt.Sprintf("Email: %s, Phone: %s", i.Email, i.Phone)
+}
+
+type Teacher struct {
+	Name string
+	Gender string
+	Info
+}
+
+func main() {
+	t := Teacher{
+		Name: "zhangsan",
+		Gender: "male",
+		Info: Info{
+			Email: "zhangsan@qq.com",
+			Phone: "123456",
+		},
+	}
+
+	fmt.Println(t.Detail())			// 直接访问嵌套的结构体的方法
+}
+```
+
+结构体还可以嵌入其他包内定义的结构体，下面展示通过在匿名结构体中嵌入sync.Mutex结构体进行代码优化
+
+首先，借助映射和互斥锁sync.Mutex实现一个建议的缓存
+
+```go
+
+```
 
 
 ## 接口
