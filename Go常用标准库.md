@@ -625,16 +625,193 @@ func parseDemo() {
 
 ## log包
 
+### 默认logger
 
+log包定义了一个logger类型，提供了一些格式化输出日志信息的方法；log包提供了一个预定义的“标准”logger实例，可以直接使用该实例调用Print系列（Print、Printf、Println）函数、Fatal系列（Fatal、Fatalf、Fatalln）函数和Panic系列（Panic、Panicf、Panicln）函数
 
+```go
+import (
+    "log"
+)
+func main() {
+    log.Println("这是一条普通的日志")
+    v := "很普通的"
+    log.Printf("这是一条%s日志\n", v)
+    log.Fatalln("这是一条会触发fatal的日志")        // 会在输出日志信息后调用os.Exit(1)
+    log.Panicln("这是一条会触发panic的日志")        // 会在输出日志信息后panic
+}
+```
 
+### 自定义logger
 
+默认的logger只会提供日志的日期和时间信息，可以通过`func Flags() int`和`func SetFlags(flag int)`来实现自定义logger，前者返回标准logger的输出配置，后者用来设置标准logger的输出
 
+1. flag选项
+
+```go
+// flag选项是一系列定义好的常量，用来控制输出日志信息的细节，但是日志信息输出的顺序是固定的，无法修改
+Ldate = 1 << iota       // 日期：2009/01/23
+Ltime                   // 时间：01:23:23
+Lmicroseconds           // 微妙级别的时间：01:23:23.123123
+Llongfile               // 文件全路径名+行号：/a/b/c/d.go:23
+Lshortfile              // 文件名+行号：d.go:23（会覆盖Llongfile）
+LUTC                    // 使用UTC时间
+LstdFlags = Ldate | Ltime // 标准logger的初始值
+
+// 应用示例
+log.SetFlags(log.Llongfile | log.Lmicroseconds | log.Ldate)
+log.Println("这是一条很普通的日志")
+// 终端输出> 2019/06/19 14:05:17.494943 .../log_demo/main.go:10: 这是一条很普通的日志
+```
+
+2. 配置日志前缀
+
+日志前缀支持根据需要为日志设置不同的前缀，方面阅读，`func Prefix() string`和`func SetPrefix(prefix string)`，前者用于查看标准logger的输出前缀，后者用来设置输出前缀
+
+```go
+func main() {
+    // 自定义日志的配置
+    log.SetFlags(log.Llongfile | log.Lmicroseconds | Log.Ldate)
+    log.Println("这是一条很普通的日志")
+    // 通过SetPrefix自定义前缀
+    log.SetPrefix("[order]")
+    log.Println("这是一条很普通的日志")
+}
+
+// 终端输出> [order] 2019/06/19 14:05:17.494943 .../log_demo/main.go:10: 这是一条很普通的日志
+```
+
+3. 配置日志输出位置
+
+`func SetOutput(w io.Writer)`：用于设置日志输出位置，可以将以下代码写入到init函数中，这样就能保证log在程序启动阶段完成配置
+
+```go
+import (
+    "fmt"
+    "log"
+    "os"
+)
+
+func init() {
+    logFile, err := os.OpenFile("./app.log", os.O_CREATE|OS.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        fmt.Println("open log file failed, err:", err)
+        return
+    }
+    log.SetOutput(logFile)      // 设置日志输出位置
+    log.SetFlags(log.Llongfile | log.Lmicroseconds | log.Ldate)
+}
+```
+
+### 创建logger
+
+`func New(out io.Writer, prefix string, flag int) *Logger`：用于创建一个新的logger，其中out参数用于设置日志输出位置，prefix参数用于设置日志前缀，flag参数用于设置日志输出选项
+
+```go
+func main() {
+    logger := log.New(os.Stdout, "<New>", log.Lshortfile|log.LstdFlags|log.Ltime)
+    logger.Println("这是自定义的logger记录的日志")
+}
+// 终端输出> <New>2019/06/19 14:06:08 main.go:16: 这是自定义的logger记录的日志
+```
+
+Go中的log库功能十分有限，一般在实际项目中根据要求编写日志库或者使用第三方日志库，如logrus、zap等
 
 ## stronv包
 
+实现了基础数据类型和其字符串表示的相互转换，主要有以下函数：Atoi、Itoa、Parse系列和Format系列
+
+### string与int类型转换
+
+1. Atoi函数
+
+`func Atoi(s string) (int, error)`：Atoi是ParseInt的简写，将字符串类型的证书转换为int类型，若传入的字符串参数无法转换为int类型，则返回错误
+
+```go
+func AtoiDemo() {
+    str := "45"
+    v, err := stronv.Atoi(str)      // 56,nil
+    str := "中"
+    v, err = stronv.Atoi(str)       // 0,strconv.Atoi: parsing "中": invalid syntax
+}
+```
+
+2. Itoa函数
+
+- `func Itoa(i int) string`：Itoa是FormatInt的简写，将int类型数据转换为对应的字符串表示
+
+```go
+i := 65
+v := string(i)      // 使用string(i)返回的是UTF-8编码的表示
+v = stronv.Itoa(i)  // "65"
+```
+
+### Parse系列函数
+
+将字符串转换为给定类型的值
+
+- `func ParseBool(str string) (value bool, err error)`：返回字符串表示的bool值，只接受1、0、t、f、T、F、true、false、True、False、TRUE、FALSE；传入其他参数会返回错误
+
+- `func ParseInt(s string, base int, bitSize int) (i int64, err error)`：返回字符串表示的整数值，接受正负号，base指定进制（2到36），如果base为0，则会从字符串前置判断，"0x"是16进制，"0"是8进制，否则是10进制；bitSize指定结果必须能赋值（不会溢出）的整数类型，0、8、16、32、64分别代表int、int8、int16、int32、int64；返回的err是*NumError类型的，如果语法有误，err.Error = ErrSyntax；如果结果超出类型范围err.Error = ErrRange
+
+- `func ParseUint(s string, base int, bitSize int) (uint64, error)`：与ParseInt类似，但不接受带政府好的字符串参数，返回字符串表示的无符号整数值
+
+- `func ParseFloat(s string, bitSize int) (float64, error)`：返回字符串表示的浮点数值，bitSize指定了结果必须能赋值（无溢出）的浮点数类型，32是float32（返回值可以不改变精确值的赋值给float32）或64表示float64；返回的err是*NumError类型的，如果语法有误，err.Error = ErrSyntax；如果结果超出类型范围err.Error = ErrRange；如果参数s合乎语法规则，则返回最接近s值的浮点数（使用IEEE754规范舍入）
+
+```go
+func parseDemo() {
+    b, err := strconv.ParseBool("true")      // true <nil>
+    f, err := strconv.ParseFloat("3.1415", 64)      // 3.1415 <nil>
+    i, err := strconv.ParseInt("-2", 10, 64)      // -2 <nil>
+    u, err := strconv.ParseUint("2", 10, 64)      // 2 <nil>
+}
+```
+
+### Format系列函数
+
+将给定类型数据格式化为string类型数据
+
+- `func FormatBool(b bool) string`：返回布尔类型b的字符串表示，true或false
+
+- `func FormatInt(i int64, base int) string`：返回整数类型i的base进制的字符串表示，base必须在2~36，例如FormatInt(10, 2)会将二进制的10转换为对应的字符串表示，结果中会使用小写字母a~z表示大于10的数字
+
+- `func FormatUint(i uint64, base int) string`：返回无符号整数类型i的base进制的字符串表示，是FormatInt的无符号整数版本
+
+- `func FormatFloat(f float64, fmt byte, prec, bitSize int) string`：返回浮点数类型f的字符串表示，fmt表示格式，其中'f'(-ddd.dddd)、'b'(-ddddp+-ddd，二进制指数)、'e'(-d.dddde+-dd, 十进制指数)、'E'(-d.ddddE+-dd, 十进制指数)、'g'(指数很大时用'e'格式，否则'f'格式)、'G'(指数很大时用'E'格式，否则用'f'格式)，prec表示精度（排除指数部分），对于'f'、'e'、'E'，他表示小数点后的数字个数，对于'g'、'G'，他控制总的数字个数，若prec为-1，则代表使用最少数量的、但又必须的数字来表示f，bitSize表示f的来源类型（32：float32、64：float64），会据此进行舍入
+
+```go
+func foramtDemo() {
+    s1 := strconv.FormatBool(true)                  // "true"
+    s2 := strconv.FormatFloat(3.1415, 'E', -1, 64)  // ""3.1415E+00"
+    s3 := strconv.FormatInt(-10, 2)                 // "-1010"
+    s4 := strconv.FormatUint(10, 2)                 // "1010"
+}
+```
+
+### 其他
+
+1. isPrint函数
+
+`func IsPrint(r rune) bool`：返回一个字符是否可以输出，和unicode.IsPrint一样，参数r只能是字母（广义）、数字、标点符号和ASCII空格
+
+2. CanBackquote
+
+`func CanBackquote(s string) bool`：判断字符串s是否可以不被修改的表示为一个单行的、没有空格和tab之外控制字符的反引号字符串
+
+### 其他Append系列函数、Quote系列函数，可看官方文档
 
 ## net/http包
+
+包含了完整的HTTP客户端和服务端的实现
+
+### HTTP客户端
+
+
+
+
+
+
+
 
 
 ## Context包
@@ -752,32 +929,7 @@ NewReader创建一个从s读取数据的Reader
 
 
 
-## strconv
 
-`strconv`包实现了基本数据类型和其字符串表示的相互转换
-
-- `func ParseBool(str string) (value bool, err error)`：返回字符串表示的bool值
-
-- `func ParseInt(s string, base int, bitSize int) (i int64, err error)`：返回字符串表示的整数值，接受正负号，base指定进制（2到36），如果base为0，则会从字符串前置判断，"0x"是16进制，"0"是8进制，否则是10进制；bitSize指定结果必须能无溢出赋值的整数类型，0、8、16、32、64分别代表int、int8、int16、int32、int64；返回的err是*NumError类型的，如果语法有误，err.Error = ErrSyntax；如果结果超出类型范围err.Error = ErrRange
-
-- `func ParseUint(s string, base int, bitSize int) (uint64, error)`：返回字符串表示的无符号整数值
-
-- `func ParseFloat(s string, bitSize int) (float64, error)`：返回字符串表示的浮点数值，bitSize指定了结果必须能无溢出赋值的整数类型，32或64；返回的err是*NumError类型的，如果语法有误，err.Error = ErrSyntax；如果结果超出类型范围err.Error = ErrRange
-
-- `func FormatBool(b bool) string`：返回布尔类型b的字符串表示
-
-- `func FormatInt(i int64, base int) string`：返回整数类型i的base进制的字符串表示
-
-- `func FormatUint(i uint64, base int) string`：返回无符号整数类型i的base进制的字符串表示
-
-- `func FormatFloat(f float64, fmt byte, prec, bitSize int) string`：返回浮点数类型f的字符串表示，fmt表示格式，prec表示精度，bitSize表示类型
-
-- `func Atoi(s string) (int, error)`：Atoi是ParseInt的简写，返回字符串表示的整数值
-
-- `func Itoa(i int) string`：Itoa是FormatInt的简写，返回整数类型i的字符串表示
-
-
-## time
 
 
 
