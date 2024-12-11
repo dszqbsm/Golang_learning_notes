@@ -399,14 +399,236 @@ flag.NArg()     // 返回命令行参数后的其他参数数量
 flag.NFlag()    // 返回使用的命令行参数数量
 ```
 
+3. flag包完整示例
 
+```go
+func main() {
+    var (
+        job string
+        num int
+        skip bool
+        delay time.Duration
+    )
+    flag.StringVar(&job, "job", "work", "任务名称")
+    flag.IntVar(&num, "num", 1, "次数")
+    flag.BoolVar(&skip, "skip", false, "是否跳过失败任务")
+    flag.DurationVar(&delay, "d", 0, "任务间隔时间")
+    // 解析命令行参数
+    flag.Parse()
+    fmt.Println(job, num, skip, delay)
+    // 返回命令行参数后的其他参数
+    fmt.Println(flag.Args())
+    // 返回命令行参数后的其他参数数量
+    fmt.Println(flag.NArg())
+    // 返回使用的命令行参数数量
+    fmt.Println(flag.NFlag())
+}
 
+/*
+> ./flag_demo -help
+Usage of ./flag_demo:
+  -d duration
+        任务间隔时间 (default 0s)
+  -job string
+        任务名称 (default "work")
+  -num int
+        次数 (default 1)
+  -skip
+        是否跳过失败任务
 
+// 在执行程序时添加命令行参数
+> ./flag_demo -job search --num 10 -skip=true -d=1m
+search 10 true 1m0s 
+[] 
+0 
+3
+
+// 在执行程序时使用其他命令行参数
+> ./flag_demo test 10
+work 10 false 0s            // 命令行没有给定参数，使用默认值
+[test 10]
+2
+0
+*/
+```
+
+也即是，可以通过flag包来设置命令行的参数设置，从而通过-help能够查看帮助信息，并且可以通过-job、-num、-skip、-d来设置对应的参数值，这些值会赋值到flag包设置的变量中，从而在程序中直接使用，对于未设置的参数，会使用默认值；此外命令行输入的参数都可以通过flag.Args()获取到，因此可以获取到其他命令行参数
 
 ## time包
 
+1. 时间类型
+
+```go
+func timeDemo() {
+    now := time.Now()       // 获取当前时间
+    fmt.Printf("current time:%v\n", now)
+
+    year := now.Year()     // 年
+    month := now.Month()   // 月
+    day := now.Day()       // 日
+    hour := now.Hour()     // 小时
+    minute := now.Minute() // 分钟
+    second := now.Second() // 秒
+}
+```
+
+2. location和time zone
+
+```go
+func timezoneDemo() {
+    // 中国没有夏令时，使用固定的8小时的UTC时差
+    secondEastOfUTC := int((8 * time.Hour).Seconds())           // 计算了UTC时间与背景时间相差的秒数，8小时转换为秒
+    // FixedZone返回始终使用给定区域名称和偏移量的Location
+    beijing := time.FixedZone("Beijing Time", secondEastOfUTC)  // 创建一个名为"Beijing Time"的时区，偏移量为secondEastOfUTC，即8小时
+    // 根据location获取当前时间
+    now := time.Now().In(beijing)                               // 根据时区获取当前时间
+    fmt.Println(now)
+
+    // 如果当前系统有时区数据库，则可以使用LoadLocation加载一个位置得到对应的时区
+    newYork, err := time.LoadLocation("America/New_York")   // UTC-05:00
+
+    // 创建时间对象需要指定位置，常用的位置是time.Local（当地时间）和time.UTC（UTC时间），以下都表示2009年1月1日23:00:00
+    timeInLocal := time.Date(2009, 1, 1, 23, 0, 0, 0, time.Local)       // 系统本地时间
+    timeInUTC := time.Date(2009, 1, 1, 23, 0, 0, 0, time.UTC)           // UTC时间
+    timeInNewYork := time.Date(2009, 1, 1, 23, 0, 0, 0, newYork)        // 纽约时间
+    timeInBeijing := time.Date(2009, 1, 1, 23, 0, 0, 0, beijing)        // 北京时间
+
+    timesAreEqual = timeInUTC.Equal(timeInNewYork)                      // 虽然看似相差8小时，但表示的是同一个时间
+}
+```
+
+3. Unix Time
+
+表示自1970年1月1日00:00:00UTC至当前时间经过的总秒数
+
+```go
+func timestampDemo() {
+    now := time.Now()               // 获取当前时间
+    timestamp := now.Unix()         // 秒级时间戳
+    milli := now.UnixMilli()        // 毫秒级时间戳
+    micro := now.UnixMicro()        // 微秒级时间戳
+    nanosecond := now.UnixNano()    // 纳秒级时间戳
+}
+```
+
+```go
+func timestamp2Time() {
+    // 创建一个名为"Beijing Time"的时区，偏移量为secondEastOfUTC，即8小时
+    secondEastOfUTC := int((8 * time.Hour).Seconds())
+    beijing := time.FixedZone("Beijing Time", secondEastOfUTC)
+    // 根据指定时区获取时间对象，以下时间对象表示时间2009年1月1日23:00:00
+    t := time.Date(2009, 1, 1, 23, 0, 0, 0, beijing)
+    var (
+        sec = t.Unix()          // 秒级时间戳，为int64类型
+        msec = t.UnixMilli()    // 毫秒级时间戳，为int64类型
+        usec = t.UnixMicro()    // 微秒级时间戳，为int64类型
+    )
+    // 将以上int64类型的时间戳转换成时间对象
+    timeObj := time.Unix(sec, 22)       // 2009-01-01 23:00:00.000000022 +0800 CST
+    timeObj = time.UnixMilli(msec)     // 2009-01-01 23:00:00 +0800 CST
+    timeObj = time.UnixMicro(usec)     // 2009-01-01 23:00:00 +0800 CST
+}
+```
+
+4. 时间间隔
+
+`time.Duration`表示两个时间点之间的间隔，以纳秒为单位，最长时间间隔约为290年
+
+```go
+// time包中定义的时间间隔类型的常量
+const (
+    Nanosecond Duration = 1
+    Microsecond = 1000 * Nanosecond
+    Millisecond = 1000 * Microsecond
+    Second = 1000 * Millisecond
+    Minute = 60 * Second
+    Hour = 60 * Minute
+)
+// time.Duration表示1纳秒，time.Second表示1秒
+```
+
+5. 时间操作
+
+- `func (t Time) Add(d Duration) Time`：返回t+d后的时间
+- `func (t Time) Sub(u Time) Duration`：返回t-u的时间间隔，若超过Duration所能表示的最大值/最小值，则返回该最大值/最小值
+- `func (t Time) Equal(u Time) bool`：判断两个时间是否相同，会考虑时区的影响，因此不同时区标准的时间也可以正确比较
+- `func (t Time) Before(u Time) bool`：判断时间t是否在u之前，会考虑时区的影响，因此不同时区标准的时间也可以正确比较
+- `func (t Time) After(u Time) bool`：判断时间t是否在u之后，会考虑时区的影响，因此不同时区标准的时间也可以正确比较
+
+6. 定时器
+
+```go
+// 定时器的本质是通道
+func tickDemo() {
+    ticker := time.Tick(time.Second)        // 定义一个间隔为1s的定时器
+    for i := range ticker {
+        fmt.Println(i)      // 每秒都会执行的任务
+    }
+}
+```
+
+7. 时间格式化
+
+`time.Format`函数能够将一个时间对象格式化为指定布局的文本表示形式
+
+Go1.20添加了一些常用的格式化布局常量
+
+```go
+DateTime = "2006-01-02 15:04:05"
+DateOnly = "2006-01-02"
+TimeOnly = "15:04:05"
+
+// 时间格式化
+func formatDemo() {
+    now := time.Now()
+    // 使用time包提供的DateTime常量进行格式化
+    fmt.Println(now.Format(time.DateTime))
+    // 24小时制，小数点后写0，因为有3个0，因此格式化输出的结果也保留3位小数
+    fmt.Println(now.Format("2006-01-02 15:04:05.000 Mon Jan"))
+    // 12小时制，小数点后写9，省略末尾可能出现的0
+    fmt.Println(now.Format("2006-01-02 03:04:05.999 PM Mon Jan"))
+    // 只格式化时、分、秒部分
+    fmt.Println(now.Format("15:04:05"))
+    fmt.Println(now.Format(time.TimeOnly))      // 使用time包的TimeOnly常量
+    // 只格式化日期部分
+    fmt.Println(now.Format("2006-01-02"))
+    fmt.Println(now.Format(time.DateOnly))      // 使用time包的DateOnly常量
+}
+```
+
+8. 解析字符串格式的时间
+
+使用`time.Parse`和`time.ParseInLocation`两个函数，用于从文本的时间表示中解析出时间对象，第一个参数是用于参考的时间格式，第二个参数是待解析的时间字符串，前者默认使用UTC时间来解析时间字符串，不考虑本地时区的影响，而后者允许指定一个时区，这样解析出来的时间对象会根据提供的时区来设置时间
+
+```go
+// 使用parse函数
+func parseDemo() {
+    // 在没有时区指示符的情况下，time.Parse返回UTC时间
+    timeObj, err := time.Parse("2006/01/02 15:04:05", "2016/08/09 21:21:21")
+    fmt.Println(timeObj)        // 2016-08-09 21:21:21 +0000 UTC
+    // 在有时区指示符的情况下，time.Parse返回对应时区的时间表示
+    timeObj, err = time.Parse(time.RFC3339, "2016-08-09T21:21:21+08:00")
+    fmt.Println(timeObj)        // 2016-08-09 21:21:21 +0800 CST
+}
+```
+
+```go
+// 使用parseInLocation函数
+func parseDemo() {
+    now := time.Now()
+    // 加载时区
+    loc, err := time.LoadLocation("Asia/Shanghai")
+    // 按照指定时区和指定格式解析字符串时间
+    timeObj, err := time.ParseInLocation("2006/01/02 15:04:05", "2016/08/09 21:21:21", loc)
+}
+```
 
 ## log包
+
+
+
+
+
 
 
 ## stronv包
