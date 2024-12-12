@@ -806,13 +806,208 @@ func foramtDemo() {
 
 ### HTTP客户端
 
+1. 基本的HTTP/HTTPS请求
 
+```go
+resp, err := http.Get("http://example.com/")
+if err != nil {
+    // handler error
+}defer resp.Body.Close()        // 响应体对象在使用后必须关闭，否则会存在内存泄露的风险
+resp, err := http.Post("http://example.com/upload", "image/jpeg", &buf)
+resp, err := http.PostForm("http://example.com/form", url.Values{"Key": {"Value"}, "id": {"123"}})
+```
 
+2. GET请求示例
 
+平时使用的浏览器是一个发送和接收HTTP数据的客户端，通过浏览器访问网站就是从网站的服务器接收HTTP数据，然后浏览器会按照HTML、CSS等规则将网页渲染出来
 
+```go
+package main
+import (
+    "fmt"
+    "io"
+    "net/htpp"
+)
+func main() {
+    resp, err := http.Get("http://www.liwenzhou.com/")
+    if err != nil {
+        fmt.Printf("get failed, err:%v\n", err)
+        return 
+    }
+    defer resp.Body.Close()
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("read from resp.Body failed, err:%v\n", err)
+        return 
+    }
+    fmt.Println(string(body))
+}
+```
 
+3. 带参数的GET请求示例
 
+```go
+func main() {
+    apiUrl := "http://127.0.0.1:9090/get"
+    // 设置url参数
+    data := url.Values{}
+    data.Set("name", "zhangsan")
+    data.Set("age", "18")
+    u, err := url.ParseRequestURI(apiUrl)       // 用于解析url，返回一个*url.URL结构体对象，包含URI的不同部分
+    if err != nil {
+        fmt.Printf("parse url requestUrl failed, err:%v\n", err)
+    }
+    // url编码
+    u.RawQuery = data.Encode()
+    fmt.Println(u.String())
+    resp, err := http.Get(u.String())
+    if err != nil {
+        fmt.Printf("post failed, err:%v\n" err)
+        return 
+    }
+    defer resp.Body.Close()
+    b, err := io.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("get resp failed, err:%v\n", err)
+        return
+    }
+    fmt.Println(string(b))
+}
+// 服务端处理函数
+func getHandler(w http.ResponseWriter, r *http.Request) {
+    defer r.Body.Close()
+    // 从请求的URL中获取查询参数
+    data := r.URL.Query()
+    fmt.Println(data.Get("name"))
+    fmt.Println(data.Get("age"))
+    // 定义响应的内容
+    answer := `{"status": "ok"}`
+    // 将响应的内容写入到HTTP响应体中
+    w.Write([]byte(answer))
+}
+```
 
+4. POST请求示例
+
+```go
+package main
+import (
+    "fmt"
+    "io"
+    "net/http"
+    "strings"
+)
+func main() {
+    url := "http://127.0.0.1:9090/post"
+    // 表单数据
+    // contentType := "application/x-www-form-urlencoded"
+    // data := "name=zhangsan&age=18"
+    contentType := "application/json"
+    data := `{"name": "zhangsan", "age": "18"}`
+    resp, err := http.Post(url, contentType, strings.NewReader(data))
+    if err != nil {
+        fmt.Printf("post failed, err:%v\n", err)
+        return
+    }
+    defer resp.Body.Close()
+    b, err := io.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Printf("get resp failed, err:%v\n", err)
+        return
+    }
+    fmt.Println(string(b))
+}
+// 服务端处理函数
+func postHandler(w http.ResponseWriter, r *http.Request) {
+    defer r.Body.Close()
+    // 1. 请求类型是application/x-www-form-urlencoded时解析form数据
+    r.ParseForm()
+    fmt.Println(r.PostForm)
+    fmt.Println(r.PostForm.Get("name"), r.PostForm.Get("age"))
+    // 2. 请求类型是application/json时从r.Body读取数据
+    b, err := io.ReadAll(r.Body)
+    if err != nil {
+        fmt.Printf("read from r.Body failed, err:%v\n", err)
+        return
+    }
+    fmt.Println(string(b))
+    answer := `{"status": "ok"}`
+    w.Write([]byte(answer))
+}
+```
+
+### 自定义客户端
+
+可以管理HTTP客户端的头域、重定向策略和其他设置
+
+```go
+client := &http.Client{
+    CheckRedirect: redirectPolicyFunc,
+}
+resp, err := client.Get("http://example.com")
+...
+req, err := http.NewRequest("GET", "http://example.com", nil)
+...
+req.Header.Add("If-None-Match", `W/"wyzzy"`)
+resp, err := client.Do(req)
+```
+
+### 自定义Transport
+
+要管理代理、TLS配置、keep-alive、压缩和其他设置，创建一个Transport对象，然后使用该对象创建新的客户端，Client和Transport类型都可以安全地被多个goroutine同时使用，但出于效率考虑，应该一次建立、尽量重用
+
+```go
+// 按需自定义Transport
+tr := &http.Transport{
+    TLSClientConfig: &tls.Config{RootCAs: pool},        // 用于配置TLS的相关设置
+    DisableKeepAlives: true,                            // 请求过后，底层TCP连接关闭，不保持活跃
+}
+client := &http.Client{Transport: tr}
+resp, err := client.Get("http://example.com")
+```
+
+### HTTP服务端
+
+1. 默认服务端
+
+ListenAndServe使用指定的监听地址和处理器启动HTTP服务端，处理器参数通常是nil，这表示采用包变量DefaultServeMux作为处理器，Handle和HandleFunc函数可以向DefaultServeMux添加处理器
+
+```go
+http.Handle("/foo", fooHandler)         // 将URL路径 /foo 与 fooHandler 处理器关联起来。当HTTP服务器接收到匹配 /foo 路径的请求时，它会调用 fooHandler 函数来处理这个请求
+http.HandleFunc("/bar", func(w http.ResponseWriter, r *http.Request) {// 将URL路径/bar与一个匿名函数关联起来。当HTTP服务器接收到匹配 /bar 路径的请求时，它会调用这个匿名函数来处理请求
+    fmt.Fprintf(w, "Hello, %q", html.EscapeString(r.URL.Path))      // 用来向客户端发送响应，html.EscapeString用来转义请求路径中的HTML特殊字符，防止跨站脚本攻击
+})
+log.Fatal(http.ListenAndServe(":8080", nil))                        // 调用 http.ListenAndServe 函数来启动HTTP服务器，http.ListenAndServe 函数会阻塞当前线程，直到服务器停止运行，如果 http.ListenAndServe 返回错误（例如端口已被占用），程序将打印错误信息并退出
+```
+
+```go
+func sayHello(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "Hello zhangsan!")
+}
+func main() {
+    http.HandleFunc("/", sayHello)
+    err := http.ListenAndServe(":9090", nil)
+    if err != nil {
+        fmt.Printf("http server failed, err:%v\n", err)
+        return
+    }
+}
+```
+
+2. 自定义服务端
+
+要管理服务端的行为，可以创建一个自定义的服务端
+
+```go
+s := &http.Server{
+    Addr: ":8080",
+    Handler: myHandler,
+    ReadTimeout: 10 * time.Second,
+    WriteTimeout: 10 * time.Second,
+    MaxHeaderBytes: 1 << 20,
+}
+log.Fatal(s.ListenAndServe())
+```
 
 ## Context包
 
@@ -821,41 +1016,6 @@ func foramtDemo() {
 
 
 
-
-# Go常用第三方库
-
-## gin框架
-
-
-
-## MySQL
-
-
-## sqlx
-
-
-## Redis
-
-
-## MongoDB
-
-
-## etcd
-
-
-## Zap日志库
-
-
-## Viper
-
-
-## singleflight包
-
-
-## Wire
-
-
-## gRPC
 
 
 
