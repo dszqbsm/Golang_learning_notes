@@ -1011,7 +1011,9 @@ log.Fatal(s.ListenAndServe())
 
 ## Context包
 
+定义了一个Context类型，携带截止时间、取消信号以及跨api和进程的其他请求作用域的值
 
+### 优雅退出goroutine
 
 
 
