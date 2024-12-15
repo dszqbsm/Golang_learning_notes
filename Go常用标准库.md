@@ -1011,16 +1011,130 @@ log.Fatal(s.ListenAndServe())
 
 ## Context包
 
-定义了一个Context类型，携带截止时间、取消信号以及跨api和进程的其他请求作用域的值
+定义了一个Context类型，携带截止时间、取消信号以及跨api和进程的其他请求作用域的值，是为了在不同API层级之间传递控制信息
 
 ### 优雅退出goroutine
 
+net/http包会为每个连接启动一个对应的goroutine处理请求，在该请求处理函数中通常又会启动额外的goroutine访问后端的数据库和RPC服务，用来处理请求的goroutine通常需要访问特定的数据，当一个请求超时或被取消时，所有用来处理该请求的goroutine都应该快速退出，系统才能释放这些goroutine占用的资源
+
+
+对于下面的例子，若想在main函数中通知work函数所在的goroutine退出，应该如何做
+
+```go
+var wg sync.WaitGroup
+func worker() {
+    for {
+        fmt.Println("worker")
+        time.Sleep(time.Second)
+    }
+    // 接收外部命令实现退出
+    wg.Done()
+}
+func main() {
+    wg.Add(1)
+    go worker()
+    // 优雅地通知goroutine退出
+    wg.Wait()
+    fmt.Println("over")
+}
+```
+
+可以使用通道来通知goroutine退出，如下代码所示，但是会存在两个问题，一是使用全局变量在跨包调用时不容易统一，其次如果worker函数中再启动其他的goroutine就不太好控制
+
+```go
+var wg sync.WaitGroup
+func worker(exitChan chan struct{}) {
+LOOP:
+    for {
+        fmt.Println("worker")
+        time.Sleep(time.Second)
+        select {
+        case <-exitChan:    // 等待接收退出的通知
+            break LOOP
+        default:
+        }
+    }
+    wg.Done()
+}
+func main() {
+    var exitChan = make(chan struct{})
+    wg.Add(1)
+    go worker(exitChan)
+    time.Sleep(time.Second * 3)
+    exitChan <- struct{}{}      // 给goroutine发送退出信号
+    close(exitChan)
+    wg.Wait()
+    fmt.Println("over")
+}
+```
+
+使用context就能够相对友好地从外部控制goroutine的退出，此外当worker中启动了其他的goroutine时，也能通过context来传递退出信号
+
+```go
+var wg sync.WaitGroup
+func worker(ctx context.Context) {
+    go worker2(ctx)             // 将ctx透传下去
+LOOP:
+    for {
+        fmt.Println("worker")
+        time.Sleep(time.Second)
+        select {
+        case <-ctx.Done():      // 等待接收退出的通知
+            break LOOP
+        default:
+        }
+    }
+    wg.Done()
+}
+func worker2(ctx context.Context) {
+LOOP:
+    for {
+        fmt.Println("worker2")
+        time.Sleep(time.Second)
+        select {
+        case <-ctx.Done():          // 等待接收退出通知
+            break LOOP
+        default:       
+        }
+    }
+}
+func main() {
+    ctx, cancel := context.WithCancel(context.Background())
+    wg.Add(1)
+    go worker(ctx)
+    time.Sleep(time.Second * 3)
+    cancel()       // 优雅地通知goroutine退出
+    wg.Wait()
+    fmt.Println("over")
+}
+```
+
+### Context接口
+
+该接口定义了四个需要实现的方法
+
+```go
+type Context interface {
+    Deadline() (deadline time.Time, ok bool)    // 返回当前context对象被取消的时间，即完成工作的截止时间
+    Done() <-chan struct{}                      // 返回一个通道，该通道会在当前工作完成或者context对象被取消之后关闭，多次调用Done方法会返回同一个通道
+    Err() error                                 // 但会当前context对象结束的原因，只有在Done返回的通道被关闭时才会返回非空的值，context对象被取消则返回Canceled错误，超时则返回DeadlineExceeded错误
+    Value(key interfaceP{}) interface{}         // 从context对象中返回键对应的值，对于一个context对象，多次调用Value并传入相同的Key会返回相同的结果，仅用于传递跨API、进程或请求域的数据
+}
+```
+
+### Context的创建
+
+Background和TODO函数都可以用于创建Context对象，前者用于初始化根Context，后者用于未知的代码
+
+- `func Background() Context`：会返回一个不等于nil的空context对象，该对象没有值也没有超时时间，通常用于main函数、初始化操作和测试代码，以及作为传入请求的顶层context对象中
+- `func TODO() Context`：会返回一个不等于nil的空context对象，TODO不是在生产环境中使用的，适用于尚不清楚在代码中该使用哪种context对象或者尚且不能使用context对象（即其他函数还没准备好接收context参数）时
 
 
 
+### TODO函数
 
 
-
+### With函数
 
 
 
